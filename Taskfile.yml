@@ -1,0 +1,15 @@
+version: 3
+
+# Глобальные переменные проекта
+vars:
+  GO_VERSION: '1.26.10'
+
+tasks:
+  test:
+    desc: "Проверка таск-файла"
+    cmds:
+      - echo "Hello, world!"
+
+  default:
+    cmds:
+      - task: test
