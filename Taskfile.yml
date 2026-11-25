@@ -3,6 +3,10 @@ version: 3
 # Глобальные переменные проекта
 vars:
   GO_VERSION: '1.26.10'
+  GRPCURL_VERSION: 'v1.9.3'
+
+  BIN_DIR: '{{.ROOT_DIR}}/bin'
+  GRPCURL: '{{.BIN_DIR}}/grpcurl'
 
 tasks:
   test:
@@ -13,3 +17,61 @@ tasks:
   default:
     cmds:
       - task: test
+
+  grpcurl:install:
+    desc: "Устанавливает grpcurl в каталог bin"
+    cmds:
+      - |
+        [ -f {{.GRPCURL}} ] || {
+          echo '📦 Устанавливаем grpcurl {{.GRPCURL_VERSION}}...'
+          GOBIN={{.BIN_DIR}} go install github.com/fullstorydev/grpcurl/cmd/grpcurl@{{.GRPCURL_VERSION}}
+        }
+    status:
+      - test -x {{.GRPCURL}}
+
+  test-api:
+    desc: "🧪 Запуск тестов для проверки API микросервисов"
+    deps: [ grpcurl:install ]
+    cmds:
+      - |
+        echo "🧪 Тестирование API микросервисов через gRPC и REST"
+
+        echo "📦 Тест 1: Получение списка деталей из Inventory"
+        PARTS_RESPONSE=$({{.GRPCURL}} -plaintext -d '{"filter":{}}' localhost:50051 inventory.v1.InventoryService/ListParts)
+
+        if [[ -z "$PARTS_RESPONSE" || "$PARTS_RESPONSE" == *"error"* ]]; then
+          echo "❌ Не удалось получить список деталей."
+          echo "🔍 Ответ сервера: $PARTS_RESPONSE"
+          exit 1
+        fi
+
+        # Извлекаем UUID первой детали для дальнейших тестов
+        PART_UUID=$(echo $PARTS_RESPONSE | grep -o '"uuid": "[^"]*' | head -1 | cut -d'"' -f4)
+        if [ -z "$PART_UUID" ]; then
+          echo "❌ Не удалось найти UUID детали в ответе."
+          echo "🔍 Ответ сервера: $PARTS_RESPONSE"
+          exit 1
+        fi
+        echo "✅ Успешно получен список деталей, первая UUID: $PART_UUID"
+
+        echo
+        echo "🔍 Тест 2: Получение информации о детали по UUID"
+        PART_RESPONSE=$({{.GRPCURL}} -plaintext -d "{\"uuid\":\"$PART_UUID\"}" localhost:50051 inventory.v1.InventoryService/GetPart)
+
+        if [[ -z "$PART_RESPONSE" || "$PART_RESPONSE" == *"error"* ]]; then
+          echo "❌ Не удалось получить информацию о детали."
+          echo "🔍 Ответ сервера: $PART_RESPONSE"
+          exit 1
+        fi
+
+        # Извлекаем имя детали 
+        PART_NAME=$(echo $PART_RESPONSE | grep -o '"name": "[^"]*' | cut -d'"' -f4)
+        if [ -z "$PART_NAME" ]; then
+          echo "❌ Не удалось извлечь имя детали из ответа."
+          echo "🔍 Ответ сервера: $PART_RESPONSE"
+          exit 1
+        fi
+        echo "✅ Успешно получена деталь: $PART_NAME"
+
+        echo
+        echo "🎉 Все тесты API успешно выполнены!"
