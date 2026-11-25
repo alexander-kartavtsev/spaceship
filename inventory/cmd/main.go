@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	inventoryV1 "github.com/alexander-kartavtsev/spaceship/shared/pkg/proto/inventory/v1"
 	"google.golang.org/grpc/reflection"
@@ -24,11 +25,29 @@ type inventoryService struct {
 }
 
 func (s *inventoryService) GetPart(_ context.Context, req *inventoryV1.GetPartRequest) (*inventoryV1.GetPartResponse, error) {
-	return nil, nil
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	part, ok := s.parts[req.Uuid]
+	if !ok {
+		return nil, errors.New("part not found")
+	}
+
+	response := &inventoryV1.GetPartResponse{
+		Info: part,
+	}
+
+	return response, nil
 }
 
 func (s *inventoryService) ListParts(_ context.Context, req *inventoryV1.ListPartsRequest) (*inventoryV1.ListPartsResponse, error) {
-	return nil, nil
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	response := &inventoryV1.ListPartsResponse{
+		Parts: s.parts,
+	}
+	return response, nil
 }
 
 func main() {
@@ -47,7 +66,7 @@ func main() {
 	s := grpc.NewServer()
 
 	service := &inventoryService{
-		parts: make(map[string]*inventoryV1.Part),
+		parts: getAllMockParts(),
 	}
 
 	inventoryV1.RegisterInventoryServiceServer(s, service)
@@ -71,4 +90,25 @@ func main() {
 	log.Printf("🛑 Shutting down gRPC server...")
 	s.GracefulStop()
 	log.Println("✅ Server stopped")
+}
+
+func getAllMockParts() map[string]*inventoryV1.Part {
+	parts := make(map[string]*inventoryV1.Part)
+
+	part := &inventoryV1.Part{
+		Uuid:     "a0ad507d-2b70-49e4-9378-3d92ebf9e405",
+		Name:     "Двигатель",
+		Category: inventoryV1.Category_CATEGORY_ENGINE,
+		Manufacturer: &inventoryV1.Manufacturer{
+			Name:    "Корпорация двигателей",
+			Country: "Россия",
+		},
+		Tags:          []string{"двигатель", "Россия"},
+		Price:         14250000,
+		StockQuantity: 7,
+	}
+
+	parts[part.Uuid] = part
+
+	return parts
 }
